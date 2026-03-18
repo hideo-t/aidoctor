@@ -1073,6 +1073,49 @@ const observer = new IntersectionObserver(entries => {
 
 document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 </script>
-
+<!-- AI SDR チャットウィジェット -->
+<style>
+#ai-sdr-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 12px 14px;
+  border-radius: 50px;
+  background: linear-gradient(135deg, #c05a2e, #9e4623);
+  color: #fff;
+  font-family: 'Noto Sans JP', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(192,90,46,0.3), 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.3s;
+  text-decoration: none;
+}
+#ai-sdr-fab:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(192,90,46,0.4); }
+#ai-sdr-fab .fab-emoji { font-size: 22px; }
+#ai-sdr-fab .fab-text { line-height: 1.2; }
+#ai-sdr-fab .fab-sub { font-size: 10px; font-weight: 400; opacity: 0.85; display: block; }
+@keyframes ai-sdr-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(192,90,46,0.3); }
+  50% { box-shadow: 0 4px 28px rgba(192,90,46,0.5); }
+}
+#ai-sdr-fab { animation: ai-sdr-pulse 3s ease-in-out infinite; }
+@media (max-width: 480px) {
+  #ai-sdr-fab { padding: 16px; border-radius: 50%; }
+  #ai-sdr-fab .fab-text { display: none; }
+}
+</style>
+<a id="ai-sdr-fab" href="./sdr/" target="_blank" rel="noopener">
+  <span class="fab-emoji">💬</span>
+  <span class="fab-text">
+    無料AI診断
+    <span class="fab-sub">3分で売上改善を試算</span>
+  </span>
+</a>
 </body>
 </html>
