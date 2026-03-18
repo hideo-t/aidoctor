@@ -1,1 +1,1155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI無料診断 | AIの町医者 高橋秀夫</title>
+<meta name="description" content="チャットで業務のお悩みを話すだけ。AIが売上向上とコスト削減を試算し、診断レポートをその場でお渡しします。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Noto Sans JP', sans-serif; background: #f5f0e8; }
+  #root { min-height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script>
 
+window.storage = {
+  async get(key, shared) {
+    const val = localStorage.getItem("aisdr_" + key);
+    if (val === null) throw new Error("not found");
+    return { key, value: val, shared: !!shared };
+  },
+  async set(key, value, shared) {
+    localStorage.setItem("aisdr_" + key, typeof value === "string" ? value : JSON.stringify(value));
+    return { key, value, shared: !!shared };
+  },
+  async delete(key, shared) {
+    localStorage.removeItem("aisdr_" + key);
+    return { key, deleted: true, shared: !!shared };
+  },
+  async list(prefix, shared) {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("aisdr_" + (prefix || ""))) keys.push(k.replace("aisdr_", ""));
+    }
+    return { keys, prefix, shared: !!shared };
+  }
+};
+
+</script>
+<script type="text/babel" data-type="module">
+const {useState, useRef, useEffect, useCallback} = React;
+
+
+function ApiKeyScreen({onSave}) { return null; } // Proxy版では不使用
+
+
+
+/* ═══════════════════════════════════════════════
+   AI SDR v2 — 物語駆動型営業エージェント
+   「コスト削減」+「売上向上」の2軸ROI
+   王国タイプ診断 + 現在/未来シナリオ対比
+   ═══════════════════════════════════════════════ */
+
+const SYSTEM_PROMPT = `あなたは「AIの町医者」高橋秀夫のAI営業アシスタントです。
+見込み客と自然に会話しながら、以下の情報を段階的に収集してください。
+
+【収集する情報】
+A. 基本情報
+  1. 会社名/屋号・お名前
+  2. 業種・事業内容
+  3. 従業員数（おおよそ）
+
+B. 売上・集客の現状（★最重要）
+  4. 月商（おおよそ）
+  5. 現在の集客方法（SNS、口コミ、チラシ、広告等）
+  6. 月間の新規顧客数（おおよそ）
+  7. リピート率の感覚（常連さんが多いか、一見さんが多いか）
+  8. 販促費/広告費（月額、ざっくり）
+
+C. 課題・困りごと
+  9. 一番困っていること（売上、人手、時間、集客 等）
+  10. その課題に現在かけている時間・コスト
+
+【会話のルール】
+- 1ターンで質問は1つだけ
+- 最初の挨拶は既に表示済み。2通目から本題に入る
+- 親しみやすく、町のお医者さんのように寄り添う
+- 「売上」や「月商」を聞くときは「ざっくりで構いません、月に○万円くらいとか」と例を出す
+- コストだけでなく「もっと売上を伸ばしたい」「お客さんを増やしたい」という攻めの課題を積極的に深掘りする
+- 数値がわからない場合は「なんとなくの感覚で大丈夫です」と逃げ道を用意
+- 情報が十分集まったら（少なくとも業種・課題・月商またはコスト感がわかったら）、「ありがとうございます。今のお話をもとに、御社の診断レポートをまとめますね。少々お待ちください。」と伝え、直後にJSON出力する
+
+【王国タイプ分類】ヒアリング内容から、以下の8タイプのうち最も近いものを1つ選んでください：
+- 停滞王国: 忙しいが前に進まない。改善の余地はあるが構造が整理されていない
+- 消耗王国: 業務は回っているが人的疲労が蓄積
+- 属人化王国: 特定の人がいないと回らない
+- 機会損失王国: 返信遅れ・取りこぼし・追客不足で売上を逃している
+- 混線王国: 窓口や業務フローが混乱
+- 拡張準備王国: 現状は回っているが、次の成長に仕組み化が必要
+- 手作業過密王国: 単純作業が集中し、機械に任せる余地が大きい
+- 反応遅延王国: 受付・返信・確認が遅れ、機会損失や不満が発生
+
+【JSON出力ルール】情報が十分集まったら、最後のメッセージの末尾に以下のJSONを出力。マーカーの前後に余計な文字を入れない：
+===PROPOSAL_DATA===
+{
+  "company": "会社名（不明なら「御社」）",
+  "name": "担当者名（不明なら「ご担当者」）",
+  "industry": "業種",
+  "employees": "従業員数",
+  "monthly_revenue": 月商の数値（円単位、不明なら0）,
+  "new_customers_monthly": 月間新規顧客数（不明なら0）,
+  "repeat_rate": リピート率の推定値（0-100の数値）,
+  "ad_spend_monthly": 月間販促費（円単位、不明なら0）,
+  "current_marketing": "現在の集客方法の要約",
+  "kingdom_type": "王国タイプ名（上記8つから1つ）",
+  "kingdom_description": "その王国タイプを選んだ理由（1-2文）",
+  "challenge": "主な課題の要約（2-3文）",
+  "current_cost": 課題にかかる月間コスト（円、不明なら0）,
+  "current_scenario": {
+    "3months": "このまま3ヶ月後にどうなるか（2-3文の具体的シナリオ）",
+    "1year": "このまま1年後にどうなるか（2-3文の具体的シナリオ）",
+    "3years": "このまま3年後にどうなるか（2-3文の具体的シナリオ）"
+  },
+  "future_scenario": {
+    "immediate": "AI導入直後の変化（2-3文）",
+    "3months": "導入3ヶ月後の状態（2-3文）",
+    "1year": "導入1年後の状態（2-3文）"
+  },
+  "solutions": [
+    {
+      "title": "ソリューション名",
+      "description": "具体的な内容（2-3文）",
+      "type": "revenue（売上向上）またはcost（コスト削減）またはboth",
+      "revenue_impact_pct": 売上への影響（%、なければ0）,
+      "cost_saving_pct": コスト削減率（%、なければ0）,
+      "revenue_impact_yen": 月間売上増加見込み（円、概算）,
+      "cost_saving_yen": 月間コスト削減見込み（円、概算）
+    }
+  ],
+  "total_revenue_gain_monthly": 全ソリューション合計の月間売上増加見込み（円）,
+  "total_cost_saving_monthly": 全ソリューション合計の月間コスト削減見込み（円）,
+  "monthly_fee": 推奨月額コンサル料（50000-200000）,
+  "roi_months": 投資回収期間（月数、1-6）
+}
+===END_PROPOSAL===
+
+【数値設計ガイドライン】
+- 売上向上の見込みは、業種の平均的なAI/デジタル施策の効果を参考に現実的に設定（月商の5-30%が目安）
+- 例: カフェでSNS自動投稿+MEO対策 → 新規顧客20-40%増 → 月商10-20%アップは現実的
+- 例: 居酒屋でリピート促進AI → リピート率10-15%向上 → 月商5-15%アップ
+- 例: 建設業で見積自動化 → 対応速度2倍 → 受注率10-20%向上
+- コスト削減は業務内容に応じて15-45%の範囲
+- monthly_feeは50000〜200000で、効果に見合う額を設定
+- 効果がコスト削減のみの場合でも、間接的な売上影響があれば明記
+
+【選択肢の出力ルール】★非常に重要★
+毎回の返答の最後に、ユーザーが次にタップできる選択肢を3つ提示してください。
+以下のマーカーで囲んで出力すること（===PROPOSAL_DATA===を出力するターンでは不要）：
+===CHOICES===
+選択肢1のテキスト
+選択肢2のテキスト
+選択肢3のテキスト
+===END_CHOICES===
+
+【選択肢設計の原則】
+- 質問に対する典型的な回答を3つ用意（業種を聞くなら「飲食店です」「建設業です」「小売・サービス業です」等）
+- 3つ目は「その他（自分で入力）」ではなく、3つとも具体的な選択肢にする（自由入力欄は常にUIに表示される）
+- 選択肢は短く（15文字以内が理想）
+- 数値を聞くときは現実的な範囲を提示（「月商50万円くらい」「月商100〜200万円くらい」「月商300万円以上」等）
+- 課題を聞くときは具体的に（「集客・売上を伸ばしたい」「人手不足で回らない」「事務作業が多すぎる」等）`;
+
+const STORY_PROMPT = `以下のクライアント診断データをもとに、提案書の「物語パート」を生成してください。
+
+クライアントデータ:
+{DATA}
+
+【生成するもの】
+1. ■ 現在の延長線上にある未来（放置シナリオ）
+   - 3ヶ月後、1年後、3年後を時系列で描く
+   - current_scenarioの内容をベースに、より具体的で感情に触れる文章に膨らませる
+   - 煽りすぎず、でも「このままだとまずい」と静かに感じる書き方
+
+2. ■ AI導入後に到達できる未来
+   - 導入直後、3ヶ月後、1年後を時系列で描く
+   - future_scenarioの内容をベースに膨らませる
+   - 無理のない希望を描く
+
+3. ■ 二つの未来の分かれ道
+   - 2-3文で、放置と導入の差を端的にまとめる
+   - 最後に「どちらの未来を選びますか？」で終わる
+
+【文体ルール】
+- マークダウン禁止（**太字**や#見出し禁止）
+- 「です・ます」調
+- 煽りすぎない、断定しすぎない、でも具体的
+- 業種・課題に即した具体例を織り込む
+- 各時間軸は3-5文程度`;
+
+const PROPOSAL_PROMPT = `以下のクライアント情報をもとに、「AIの町医者」高橋秀夫からの提案書本文を生成してください。
+
+クライアント情報:
+{DATA}
+
+【文体ルール】
+- マークダウン一切禁止（**太字**や#見出し禁止）
+- 「です・ます」調、経営者が読んで安心する温かみ
+- 各セクション見出しは「■」で始める
+
+【構成】
+■ ご挨拶
+2-3行。相談への感謝と自己紹介。
+
+■ 御社の現状と課題
+ヒアリング内容の要約。売上の現状と、課題の核心を3-4行で。
+
+■ 王国タイプ診断結果
+「御社は"○○王国"タイプです」で始め、なぜそう診断したかを2-3行。否定的にならず、改善の可能性を示す。
+
+■ ご提案するソリューション
+各提案を番号付きで説明。各3-4行。
+★重要：売上向上の効果を具体的に書く。「月商○万円に対して、この施策で月○万円の売上増が見込めます」のように。
+コスト削減だけの提案は不可。必ず売上・集客への効果を主軸に書く。
+
+■ 期待される効果
+売上向上とコスト削減の両面から数字を示す。
+「月間○万円の売上増加 + ○万円のコスト削減 = 月間○万円の改善効果」のように。
+
+■ 導入の進め方
+ステップ1: 無料詳細診断（60分）
+ステップ2: プロトタイプ構築（2-4週間）
+ステップ3: 本格運用・効果測定
+
+■ まとめ
+前向きな締め。「まずは60分の無料診断でお会いできれば幸いです。」で終わる。`;
+
+/* ─── CONFIG（本番デプロイ時にここを書き換えるだけ）─── */
+const CALENDLY_URL = "https://calendly.com/hdxrope/30min";
+const CONTACT_EMAIL = "hdxrope@gmail.com";
+const PROXY_URL = "https://aisdr-proxy.hdxrope.workers.dev";
+const AVATAR = "data:image/jpeg;base64,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";
+
+/* ─── COLORS（ポータルと統一：クリーム×テラコッタ）─── */
+const C = {
+  bg: "#f5f0e8", surface: "#faf7f2", card: "#ffffff",
+  accent: "#c05a2e", accentDark: "#9e4623", accentGlow: "rgba(192,90,46,0.08)",
+  warm: "#d4842a", warmGlow: "rgba(212,132,42,0.08)",
+  green: "#3a8f6e", greenGlow: "rgba(58,143,110,0.08)",
+  purple: "#7c5cbf", purpleGlow: "rgba(124,92,191,0.08)",
+  red: "#c44040", redGlow: "rgba(196,64,64,0.06)",
+  text: "#1a1a1a", dim: "#555555", muted: "#999999",
+  border: "#e0d8d0", white: "#1a1a1a",
+};
+
+/* ─── HELPERS ─── */
+const fmt = (n) => {
+  const num = typeof n === "string" ? parseInt(n.replace(/[^0-9]/g, ""), 10) : n;
+  return isNaN(num) || num === 0 ? "—" : "¥" + num.toLocaleString("ja-JP");
+};
+const fmtN = (n) => {
+  const num = typeof n === "number" ? n : parseInt(String(n).replace(/[^0-9]/g, ""), 10);
+  return isNaN(num) || num === 0 ? "—" : num.toLocaleString("ja-JP");
+};
+const today = () => { const d = new Date(); return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`; };
+const costNum = (v) => typeof v === "number" ? v : parseInt(String(v).replace(/[^0-9]/g,""),10) || 0;
+
+const parseProposal = (text) => {
+  const s = text.indexOf("===PROPOSAL_DATA===");
+  const e = text.indexOf("===END_PROPOSAL===");
+  if (s===-1) { console.log("No PROPOSAL_DATA marker found"); return null; }
+  // END marker might be missing if truncated — try to parse anyway
+  const jsonEnd = e !== -1 ? e : text.length;
+  let raw = text.substring(s+19, jsonEnd).trim();
+  // Clean common issues
+  raw = raw.replace(/,\s*}/g,"}").replace(/,\s*]/g,"]"); // trailing commas
+  try { 
+    const parsed = JSON.parse(raw);
+    console.log("JSON parsed successfully");
+    return parsed;
+  } catch(err) {
+    console.error("JSON parse failed:", err.message, "raw length:", raw.length);
+    console.log("First 200 chars:", raw.substring(0,200));
+    console.log("Last 200 chars:", raw.substring(raw.length-200));
+    // Try to fix truncated JSON by closing brackets
+    let attempt = raw;
+    const opens = (attempt.match(/{/g)||[]).length;
+    const closes = (attempt.match(/}/g)||[]).length;
+    const arrOpens = (attempt.match(/\[/g)||[]).length;
+    const arrCloses = (attempt.match(/]/g)||[]).length;
+    for(let i=0;i<arrOpens-arrCloses;i++) attempt+="]";
+    for(let i=0;i<opens-closes;i++) attempt+="}";
+    // Remove trailing comma before closing
+    attempt = attempt.replace(/,\s*}/g,"}").replace(/,\s*]/g,"]");
+    try {
+      const fixed = JSON.parse(attempt);
+      console.log("JSON fixed and parsed");
+      return fixed;
+    } catch { 
+      console.error("JSON fix also failed");
+      return null; 
+    }
+  }
+};
+const visibleText = (text) => {
+  let t = text;
+  const pi = t.indexOf("===PROPOSAL_DATA===");
+  if (pi !== -1) t = t.substring(0, pi);
+  const ci = t.indexOf("===CHOICES===");
+  if (ci !== -1) t = t.substring(0, ci);
+  return t.trim();
+};
+
+const parseChoices = (text) => {
+  const s = text.indexOf("===CHOICES===");
+  const e = text.indexOf("===END_CHOICES===");
+  if (s === -1) return [];
+  const end = e !== -1 ? e : text.length;
+  const raw = text.substring(s + 13, end).trim();
+  return raw.split("\n").map(l => l.trim()).filter(l => l.length > 0 && l.length < 50).slice(0, 3);
+};
+
+/* kingdom emoji map */
+const KINGDOM = {
+  "停滞王国":    { emoji: "🏰", color: C.muted,  label: "停滞王国" },
+  "消耗王国":    { emoji: "🔥", color: C.red,    label: "消耗王国" },
+  "属人化王国":  { emoji: "👤", color: C.warm,   label: "属人化王国" },
+  "機会損失王国":{ emoji: "💸", color: C.warm,   label: "機会損失王国" },
+  "混線王国":    { emoji: "🌀", color: C.purple, label: "混線王国" },
+  "拡張準備王国":{ emoji: "🚀", color: C.accent, label: "拡張準備王国" },
+  "手作業過密王国":{ emoji: "⚙️", color: C.dim,  label: "手作業過密王国" },
+  "反応遅延王国":{ emoji: "⏳", color: C.red,    label: "反応遅延王国" },
+};
+
+/* ─── SMALL COMPONENTS ─── */
+function AvatarBadge({size=36}){
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <img src={AVATAR} alt="" style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",border:`2px solid ${C.accent}44`,boxShadow:`0 0 12px ${C.accentGlow}`}}/>
+      <div>
+        <div style={{fontSize:size>30?13:11,fontWeight:700,color:C.white,lineHeight:1.2}}>高橋秀夫</div>
+        <div style={{fontSize:size>30?10:9,color:C.accent,lineHeight:1.2}}>AIの町医者</div>
+      </div>
+    </div>
+  );
+}
+
+function Dots() {
+  const [f,setF]=useState(0);
+  useEffect(()=>{const t=setInterval(()=>setF(x=>x+1),380);return()=>clearInterval(t);},[]);
+  return (
+    <div style={{display:"flex",gap:6,padding:"14px 18px",background:C.card,borderRadius:"4px 14px 14px 14px",border:`1px solid ${C.border}`,alignSelf:"flex-start"}}>
+      {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:f%3===i?C.accent:C.muted,transition:"all 0.3s"}}/>)}
+    </div>
+  );
+}
+
+function Bar({label,pct,color,suffix="削減"}){
+  const [w,setW]=useState(0);
+  useEffect(()=>{const t=setTimeout(()=>setW(Math.min(pct,100)),300);return()=>clearTimeout(t);},[pct]);
+  return (
+    <div style={{marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+        <span style={{fontSize:12,color:C.dim}}>{label}</span>
+        <span style={{fontSize:12,fontWeight:700,color}}>{pct}%{suffix}</span>
+      </div>
+      <div style={{height:6,borderRadius:3,background:C.surface}}>
+        <div style={{height:"100%",borderRadius:3,background:color,width:`${w}%`,transition:"width 1s cubic-bezier(.4,0,.2,1)"}}/>
+      </div>
+    </div>
+  );
+}
+
+function TimelineItem({time,text,color,isLast}){
+  return (
+    <div style={{display:"flex",gap:14,marginBottom:isLast?0:20}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+        <div style={{width:12,height:12,borderRadius:"50%",background:color,flexShrink:0}}/>
+        {!isLast&&<div style={{width:2,flex:1,background:`${color}33`,marginTop:4}}/>}
+      </div>
+      <div style={{paddingBottom:isLast?0:8}}>
+        <div style={{fontSize:13,fontWeight:700,color,marginBottom:4}}>{time}</div>
+        <div style={{fontSize:13,color:C.dim,lineHeight:1.7}}>{text}</div>
+      </div>
+    </div>
+  );
+}
+
+function Step({num,title,desc,color}){
+  return (
+    <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:18}}>
+      <div style={{width:36,height:36,borderRadius:9,background:`${color}18`,color,fontSize:16,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{num}</div>
+      <div>
+        <div style={{fontSize:14,fontWeight:700,color:C.white,marginBottom:2}}>{title}</div>
+        <div style={{fontSize:13,color:C.dim,lineHeight:1.6}}>{desc}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── LOADING SCREEN ─── */
+function LoadingScreen(){
+  const [elapsed,setElapsed]=useState(0);
+  const [sceneIdx,setSceneIdx]=useState(0);
+  const TOTAL=20; // estimated seconds
+
+  const scenes=[
+    {emoji:"🐕",bg:"#f5f0e8",msg:"AIわんこが御社のデータを嗅ぎ回っています...",sub:"くんくん…課題の匂いがするぞ！",animals:["🐕","🦴","🐾","💨"],color:"#c05a2e"},
+    {emoji:"🐈",bg:"#f5f0e8",msg:"AIにゃんこが王国タイプを見極め中...",sub:"この会社は…にゃるほど。",animals:["🐈","🐟","🧶","✨"],color:"#7c5cbf"},
+    {emoji:"🌊",bg:"#ede7dd",msg:"沖縄の海からインスピレーションを受信中...",sub:"いい波きてます！",animals:["🌊","🐠","🐚","🌺"],color:"#3a8f6e"},
+    {emoji:"⛰️",bg:"#f5f0e8",msg:"福島の山から知恵を降ろしています...",sub:"頂上が見えてきた！",animals:["⛰️","🌲","🦅","☁️"],color:"#3a8f6e"},
+    {emoji:"🍺",bg:"#f5f0e8",msg:"提案書にウイスキーの香りを添えています...",sub:"いい仕上がりになりそうです。",animals:["🥃","🎵","📝","✨"],color:"#c05a2e"},
+    {emoji:"🚀",bg:"#ede7dd",msg:"もうすぐ完成！最終チェック中...",sub:"あと少しお待ちください！",animals:["🚀","⭐","🌙","💫"],color:"#3a8f6e"},
+  ];
+
+  useEffect(()=>{
+    const t=setInterval(()=>setElapsed(e=>{
+      const next=e+1;
+      if(next>=TOTAL) return TOTAL;
+      return next;
+    }),1000);
+    return()=>clearInterval(t);
+  },[]);
+
+  useEffect(()=>{
+    const interval = Math.max(3, Math.floor(TOTAL / scenes.length));
+    const t=setInterval(()=>setSceneIdx(i=>(i+1)%scenes.length), interval * 1000);
+    return()=>clearInterval(t);
+  },[scenes.length]);
+
+  const remaining=Math.max(0,TOTAL-elapsed);
+  const progress=Math.min((elapsed/TOTAL)*100,95);
+  const sc=scenes[sceneIdx];
+
+  return(
+    <div style={{minHeight:"100vh",background:sc.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",fontFamily:"'Noto Sans JP',sans-serif",padding:20,transition:"background 1s",position:"relative",overflow:"hidden"}}>
+
+      {/* Floating background emojis */}
+      <style>{`
+        @keyframes float{0%{transform:translateY(100vh) rotate(0deg);opacity:0}10%{opacity:0.6}90%{opacity:0.6}100%{transform:translateY(-20vh) rotate(360deg);opacity:0}}
+        @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-20px)}}
+        @keyframes wiggle{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+        @keyframes fadeSlide{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+        @keyframes pulse2{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+      `}</style>
+
+      {sc.animals.map((a,i)=>(
+        <div key={`${sceneIdx}-${i}`} style={{
+          position:"absolute",fontSize:["32px","28px","24px","20px"][i],
+          left:`${15+i*22}%`,
+          animation:`float ${6+i*2}s linear infinite`,
+          animationDelay:`${i*1.5}s`,
+          opacity:0.25,pointerEvents:"none",
+        }}>{a}</div>
+      ))}
+
+      {/* Main character */}
+      <div style={{fontSize:72,marginBottom:12,animation:"bounce 1.5s ease-in-out infinite",filter:"drop-shadow(0 4px 12px rgba(0,0,0,0.3))"}}>
+        {sc.emoji}
+      </div>
+
+      {/* Message */}
+      <div key={`msg-${sceneIdx}`} style={{animation:"fadeSlide 0.5s ease-out",textAlign:"center"}}>
+        <div style={{fontSize:17,fontWeight:700,color:C.white,marginBottom:6}}>{sc.msg}</div>
+        <div style={{fontSize:14,color:sc.color,marginBottom:24,fontStyle:"italic"}}>{sc.sub}</div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{width:280,marginBottom:12}}>
+        <div style={{height:8,borderRadius:4,background:"rgba(0,0,0,0.06)",overflow:"hidden"}}>
+          <div style={{
+            height:"100%",borderRadius:4,
+            background:`linear-gradient(90deg,${sc.color},${C.accent})`,
+            width:`${progress}%`,
+            transition:"width 1s linear",
+            boxShadow:`0 0 12px ${sc.color}66`,
+          }}/>
+        </div>
+      </div>
+
+      {/* Countdown */}
+      <div style={{display:"flex",alignItems:"center",gap:8,animation:"pulse2 2s ease-in-out infinite"}}>
+        <div style={{
+          padding:"6px 16px",borderRadius:20,
+          background:"rgba(0,0,0,0.04)",
+          border:`1px solid ${C.border}`,
+        }}>
+          {remaining > 0 ? (
+            <span style={{fontSize:14,color:C.white,fontWeight:600}}>
+              あと <span style={{fontSize:20,color:sc.color,fontWeight:800}}>{remaining}</span> 秒
+            </span>
+          ) : (
+            <span style={{fontSize:14,color:C.green,fontWeight:600}}>まもなく完了！ ✨</span>
+          )}
+        </div>
+      </div>
+
+      {/* Fun facts at bottom */}
+      <div style={{position:"absolute",bottom:24,textAlign:"center",padding:"0 20px"}}>
+        <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>
+          {sceneIdx%3===0 && "💡 豆知識：AI導入企業の78%が半年以内にROIを実感しています"}
+          {sceneIdx%3===1 && "💡 豆知識：「AIの町医者」は福島と沖縄の2拠点で活動中です"}
+          {sceneIdx%3===2 && "💡 豆知識：チャットボットの次は「エージェント」の時代です"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════ MAIN ═══════════════ */
+function AISDR() {
+  const [view,setView]=useState("landing"); // Proxy版: 常にlandingから開始
+  const [msgs,setMsgs]=useState([]);
+  const [input,setInput]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [composing,setComposing]=useState(false);
+  const [proposal,setProposal]=useState(null);
+  const [storyText,setStoryText]=useState("");
+  const [proposalBody,setProposalBody]=useState("");
+  const [genStep,setGenStep]=useState("");
+  const [error,setError]=useState("");
+  const [bookingName,setBookingName]=useState("");
+  const [bookingEmail,setBookingEmail]=useState("");
+  const [bookingDate,setBookingDate]=useState("");
+  const [bookingSent,setBookingSent]=useState(false);
+  const [choices,setChoices]=useState([]);
+  const [proposalId,setProposalId]=useState(null);
+  const [adminData,setAdminData]=useState([]);
+  const [adminLoading,setAdminLoading]=useState(false);
+  const endRef=useRef(null);
+  const inputRef=useRef(null);
+
+  const scroll=useCallback(()=>{setTimeout(()=>endRef.current?.scrollIntoView({behavior:"smooth"}),80);},[]);
+
+  const openChat=()=>{
+    setView("chat"); setError("");
+    if(msgs.length===0){
+      setMsgs([{role:"assistant",content:"こんにちは！「AIの町医者」へようこそ。\n\n売上のこと、集客のこと、人手不足のこと……\n経営のお悩みなら何でもお気軽にどうぞ。\n\nまずは、どんな業種のお仕事をされていますか？"}]);
+      setChoices(["飲食店です","建設・不動産業です","小売・サービス業です"]);
+    }
+    setTimeout(()=>inputRef.current?.focus(),300);
+  };
+
+  const callAPI=async(messages,system=null,maxTok=1500)=>{
+    const body={model:"claude-sonnet-4-20250514",max_tokens:maxTok,messages};
+    if(system) body.system=system;
+    const r=await fetch(PROXY_URL,{
+      method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
+    });
+    if(!r.ok) throw new Error(`API ${r.status}`);
+    const d=await r.json();
+    return d.content?.map(b=>b.text||"").join("")||"";
+  };
+
+  const send=async(overrideText)=>{
+    const text=(overrideText||input).trim(); if(!text||busy) return;
+    setError(""); setChoices([]);
+    const next=[...msgs,{role:"user",content:text}];
+    setMsgs(next); setInput(""); setBusy(true); scroll();
+
+    try {
+      // チャット応答＋JSON生成は4096トークン必要（JSON内にシナリオ等が含まれるため）
+      const reply=await callAPI(next.map(m=>({role:m.role,content:m.content})),SYSTEM_PROMPT,4096);
+      console.log("API reply length:",reply.length,"has markers:",reply.includes("===PROPOSAL_DATA==="));
+      const data=parseProposal(reply);
+      const shown=visibleText(reply);
+      const newChoices=parseChoices(reply);
+      setMsgs(prev=>[...prev,{role:"assistant",content:shown}]); 
+      setChoices(newChoices);
+      scroll();
+
+      if(data){
+        console.log("Proposal parsed OK:",data.company,data.kingdom_type);
+        setProposal(data);
+        setBookingName(data.name!=="ご担当者"?data.name:"");
+        setView("proposal");
+        setGenStep("generating");
+
+        // 物語と提案書を並列生成（Promise.all）— 待ち時間が半分に
+        const jsonStr=JSON.stringify(data,null,2);
+        const [storyResult, proposalResult] = await Promise.allSettled([
+          callAPI([{role:"user",content:STORY_PROMPT.replace("{DATA}",jsonStr)}]),
+          callAPI([{role:"user",content:PROPOSAL_PROMPT.replace("{DATA}",jsonStr)}]),
+        ]);
+
+        setStoryText(storyResult.status==="fulfilled"?storyResult.value:"");
+        setProposalBody(proposalResult.status==="fulfilled"?proposalResult.value:"提案書の生成中にエラーが発生しました。");
+        setGenStep("done");
+        // 永続ストレージに保存
+        await saveProposal(data, storyResult.status==="fulfilled"?storyResult.value:"", proposalResult.status==="fulfilled"?proposalResult.value:"");
+      } else if(shown.includes("まとめ") || shown.includes("お待ち") || shown.includes("試算") || shown.includes("レポート")) {
+        // AIが「まとめますね」と言ったのにJSONが取れなかった → リトライ
+        console.log("Farewell detected but no JSON. Retrying with explicit request...");
+        setMsgs(prev=>[...prev,{role:"assistant",content:"（レポート生成の準備中です…もう少しお待ちください）"}]);
+        try {
+          const retryMsgs=[...next.map(m=>({role:m.role,content:m.content})),
+            {role:"assistant",content:shown},
+            {role:"user",content:"上記の会話内容をもとに、===PROPOSAL_DATA=== と ===END_PROPOSAL=== のマーカーで囲んだJSONデータを出力してください。会話文は不要です、JSONのみ出力してください。"}
+          ];
+          const retryReply=await callAPI(retryMsgs,SYSTEM_PROMPT,4096);
+          console.log("Retry reply length:",retryReply.length);
+          const retryData=parseProposal(retryReply);
+          if(retryData){
+            console.log("Retry succeeded!");
+            setProposal(retryData);
+            setBookingName(retryData.name!=="ご担当者"?retryData.name:"");
+            setView("proposal");
+            setGenStep("generating");
+            const jsonStr=JSON.stringify(retryData,null,2);
+            const [sr,pr]=await Promise.allSettled([
+              callAPI([{role:"user",content:STORY_PROMPT.replace("{DATA}",jsonStr)}]),
+              callAPI([{role:"user",content:PROPOSAL_PROMPT.replace("{DATA}",jsonStr)}]),
+            ]);
+            setStoryText(sr.status==="fulfilled"?sr.value:"");
+            setProposalBody(pr.status==="fulfilled"?pr.value:"");
+            setGenStep("done");
+            await saveProposal(retryData, sr.status==="fulfilled"?sr.value:"", pr.status==="fulfilled"?pr.value:"");
+          } else {
+            setMsgs(prev=>prev.slice(0,-1)); // remove loading message
+            setError("レポートの生成に失敗しました。もう少し情報を教えていただけますか？");
+          }
+        } catch(retryErr) {
+          console.error("Retry failed:",retryErr);
+          setError("レポート生成に失敗しました。もう一度お試しください。");
+        }
+      }
+    } catch(e) {
+      setError("通信エラーが発生しました。もう一度お試しください。");
+      console.error(e);
+    }
+    setBusy(false);
+  };
+
+  const handleKey=(e)=>{ if(e.key==="Enter"&&!e.shiftKey&&!composing){e.preventDefault();send();} };
+  const sendChoice=(text)=>{ setInput(""); send(text); };
+
+  /* ── Storage: 診断結果を保存 ── */
+  const saveProposal=async(data,story,body)=>{
+    try{
+      const id="diag_"+Date.now()+"_"+Math.random().toString(36).slice(2,6);
+      const record={
+        id,
+        created_at:new Date().toISOString(),
+        company:data.company||"不明",
+        name:data.name||"不明",
+        industry:data.industry||"不明",
+        kingdom_type:data.kingdom_type||"不明",
+        challenge:data.challenge||"",
+        monthly_revenue:costNum(data.monthly_revenue),
+        total_gain:costNum(data.total_revenue_gain_monthly)+costNum(data.total_cost_saving_monthly),
+        revenue_gain:costNum(data.total_revenue_gain_monthly),
+        cost_saving:costNum(data.total_cost_saving_monthly),
+        monthly_fee:costNum(data.monthly_fee),
+        roi_months:data.roi_months||0,
+        solutions:data.solutions||[],
+        current_scenario:data.current_scenario||{},
+        future_scenario:data.future_scenario||{},
+        story_text:story||"",
+        proposal_body:body||"",
+        full_data:data,
+        status:"new", // new → contacted → converted
+      };
+      await window.storage.set("proposal:"+id,JSON.stringify(record),true);
+      setProposalId(id);
+      // Also update index
+      let keys=[];
+      try{ const list=await window.storage.list("proposal:",true); keys=list?.keys||[]; }catch{}
+      console.log("Proposal saved:",id,"Total proposals:",keys.length);
+      return id;
+    }catch(e){console.error("Save failed:",e);return null;}
+  };
+
+  /* ── Storage: 管理画面用にロード ── */
+  const loadAdmin=async()=>{
+    setAdminLoading(true);
+    try{
+      const list=await window.storage.list("proposal:",true);
+      const keys=list?.keys||[];
+      const items=[];
+      for(const key of keys.slice(-50)){// 最新50件
+        try{
+          const r=await window.storage.get(key,true);
+          if(r?.value) items.push(JSON.parse(r.value));
+        }catch{}
+      }
+      items.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+      setAdminData(items);
+    }catch(e){console.error("Load failed:",e);setAdminData([]);}
+    setAdminLoading(false);
+  };
+
+  /* ── Derived values ── */
+  const p = proposal;
+  const revGain = p ? costNum(p.total_revenue_gain_monthly) : 0;
+  const costSave = p ? costNum(p.total_cost_saving_monthly) : 0;
+  const totalGain = revGain + costSave;
+  const fee = p ? costNum(p.monthly_fee) : 0;
+  const netMonthly = totalGain - fee;
+  const yearlyGain = totalGain * 12;
+  const kingdom = p ? (KINGDOM[p.kingdom_type] || { emoji:"🏰", color:C.accent, label:p.kingdom_type }) : null;
+  const solColors = [C.accent, C.warm, C.green, C.purple];
+
+  /* ═══ PROPOSAL VIEW ═══ */
+  if(view==="proposal"){
+    if(genStep!=="done"){
+      return <LoadingScreen/>;
+    }
+
+    return (
+      <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Noto Sans JP',sans-serif"}} id="proposal-print">
+        <div style={{maxWidth:820,margin:"0 auto",padding:"32px 20px 60px"}}>
+
+          {/* Avatar Bar */}
+          <div style={{marginBottom:20}}><AvatarBadge size={38}/></div>
+
+          {/* Header */}
+          <div style={{textAlign:"center",marginBottom:36,paddingBottom:24,borderBottom:`2px solid ${C.accent}33`}}>
+            <div style={{display:"inline-block",padding:"5px 16px",borderRadius:20,background:C.accentGlow,color:C.accent,fontSize:12,fontWeight:600,letterSpacing:"0.08em",marginBottom:14,border:`1px solid ${C.accentDark}44`}}>AI DIAGNOSTIC REPORT</div>
+            <h1 style={{fontSize:"clamp(24px,4vw,32px)",fontWeight:800,color:C.white,margin:"0 0 8px",letterSpacing:"-0.02em"}}>AI導入診断レポート</h1>
+            <p style={{fontSize:14,color:C.dim,margin:0}}>{p?.company} {p?.name}様 ｜ {today()}</p>
+          </div>
+
+          {/* Kingdom Type */}
+          {kingdom && (
+            <div style={{padding:24,borderRadius:16,background:`${kingdom.color}10`,border:`1px solid ${kingdom.color}33`,marginBottom:24,textAlign:"center"}}>
+              <div style={{fontSize:40,marginBottom:8}}>{kingdom.emoji}</div>
+              <div style={{fontSize:20,fontWeight:800,color:kingdom.color,marginBottom:6}}>御社は「{kingdom.label}」タイプ</div>
+              <div style={{fontSize:13,color:C.dim,lineHeight:1.7,maxWidth:500,margin:"0 auto"}}>{p?.kingdom_description}</div>
+            </div>
+          )}
+
+          {/* KPI Cards — 売上向上 + コスト削減 の2軸 */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10,marginBottom:28}}>
+            {[
+              {label:"月間売上向上見込み",value:fmt(revGain),color:C.green,icon:"📈"},
+              {label:"月間コスト削減見込み",value:fmt(costSave),color:C.accent,icon:"💰"},
+              {label:"月間改善効果合計",value:fmt(totalGain),color:C.warm,icon:"⚡"},
+              {label:"月額コンサル料",value:fmt(fee),color:C.white,sub:`実質利益 ${fmt(netMonthly)}/月`,icon:"📋"},
+              {label:"年間改善効果",value:fmt(yearlyGain),color:C.green,icon:"🎯"},
+              {label:"投資回収期間",value:`${p?.roi_months||"—"}ヶ月`,color:C.accent,icon:"⏱️"},
+            ].map((k,i)=>(
+              <div key={i} style={{padding:"18px 14px",borderRadius:14,background:C.card,border:`1px solid ${C.border}`,textAlign:"center"}}>
+                <div style={{fontSize:16,marginBottom:6}}>{k.icon}</div>
+                <div style={{fontSize:"clamp(18px,3vw,24px)",fontWeight:800,color:k.color}}>{k.value}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:3}}>{k.label}</div>
+                {k.sub&&<div style={{fontSize:10,color:C.green,marginTop:3}}>{k.sub}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* ══ STORY: Current Scenario ══ */}
+          {p?.current_scenario && (
+            <div style={{marginBottom:28}}>
+              <h2 style={{fontSize:16,fontWeight:700,color:C.red,marginBottom:14,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>
+                ⚠ このままの未来（放置シナリオ）
+              </h2>
+              <div style={{padding:20,borderRadius:14,background:`${C.red}06`,border:`1px solid ${C.red}18`}}>
+                <TimelineItem time="3ヶ月後" text={p.current_scenario["3months"]} color={C.warm} />
+                <TimelineItem time="1年後" text={p.current_scenario["1year"]} color={C.red} />
+                <TimelineItem time="3年後" text={p.current_scenario["3years"]} color="#8b2020" isLast />
+              </div>
+            </div>
+          )}
+
+          {/* ══ STORY: Future Scenario ══ */}
+          {p?.future_scenario && (
+            <div style={{marginBottom:28}}>
+              <h2 style={{fontSize:16,fontWeight:700,color:C.green,marginBottom:14,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>
+                ✨ AI導入後の未来
+              </h2>
+              <div style={{padding:20,borderRadius:14,background:`${C.green}06`,border:`1px solid ${C.green}18`}}>
+                <TimelineItem time="導入直後" text={p.future_scenario.immediate} color={C.accent} />
+                <TimelineItem time="3ヶ月後" text={p.future_scenario["3months"]} color={C.green} />
+                <TimelineItem time="1年後" text={p.future_scenario["1year"]} color="#2d7a59" isLast />
+              </div>
+            </div>
+          )}
+
+          {/* Story body (generated) */}
+          {storyText && (
+            <div style={{padding:22,borderRadius:14,background:C.card,border:`1px solid ${C.border}`,marginBottom:28}}>
+              <div style={{fontSize:14,lineHeight:2,color:C.text,whiteSpace:"pre-wrap"}}>{storyText}</div>
+            </div>
+          )}
+
+          {/* Solutions */}
+          <div style={{marginBottom:28}}>
+            <h2 style={{fontSize:16,fontWeight:700,color:C.white,marginBottom:14,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>ソリューション提案</h2>
+            {p?.solutions?.map((sol,i)=>(
+              <div key={i} style={{padding:18,borderRadius:14,background:C.card,border:`1px solid ${C.border}`,marginBottom:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                  <div style={{width:26,height:26,borderRadius:7,background:`${solColors[i%4]}18`,color:solColors[i%4],fontSize:13,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:C.white,flex:1}}>{sol.title}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {sol.revenue_impact_yen>0&&<span style={{padding:"2px 8px",borderRadius:5,background:C.greenGlow,color:C.green,fontSize:11,fontWeight:600}}>売上+{fmt(sol.revenue_impact_yen)}/月</span>}
+                    {sol.cost_saving_yen>0&&<span style={{padding:"2px 8px",borderRadius:5,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:600}}>削減{fmt(sol.cost_saving_yen)}/月</span>}
+                  </div>
+                </div>
+                <div style={{fontSize:13,color:C.dim,lineHeight:1.7,marginBottom:10}}>{sol.description}</div>
+                {sol.revenue_impact_pct>0&&<Bar label="売上向上効果" pct={sol.revenue_impact_pct} color={C.green} suffix="向上"/>}
+                {sol.cost_saving_pct>0&&<Bar label="コスト削減効果" pct={sol.cost_saving_pct} color={C.accent} suffix="削減"/>}
+              </div>
+            ))}
+          </div>
+
+          {/* Proposal Body */}
+          {proposalBody&&(
+            <div style={{marginBottom:28}}>
+              <h2 style={{fontSize:16,fontWeight:700,color:C.white,marginBottom:14,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>提案書</h2>
+              <div style={{fontSize:14,lineHeight:2,color:C.text,whiteSpace:"pre-wrap",padding:22,borderRadius:14,background:C.card,border:`1px solid ${C.border}`}}>{proposalBody}</div>
+            </div>
+          )}
+
+          {/* Steps */}
+          <div style={{marginBottom:28}}>
+            <h2 style={{fontSize:16,fontWeight:700,color:C.white,marginBottom:14,paddingBottom:8,borderBottom:`1px solid ${C.border}`}}>導入ステップ</h2>
+            <Step num={1} title="無料詳細診断（60分）" desc="業務フローを実際に拝見し、最もAI効果が高いポイントを特定。オンラインでも訪問でも対応可能。" color={C.accent}/>
+            <Step num={2} title="プロトタイプ構築（2-4週間）" desc="最も効果の高い施策から着手。動くものをお見せしながらフィードバックを反映。" color={C.warm}/>
+            <Step num={3} title="本格運用・効果測定" desc="月次レポートで効果を可視化。売上向上とコスト削減の両面で継続改善。" color={C.green}/>
+          </div>
+
+          {/* ══ BOOKING CTA ══ */}
+          <div style={{padding:24,borderRadius:16,background:`linear-gradient(135deg,${C.accentDark}33,${C.surface})`,border:`1px solid ${C.accent}33`,marginBottom:20}}>
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{fontSize:24,marginBottom:6}}>📅</div>
+              <h3 style={{fontSize:18,fontWeight:800,color:C.white,margin:"0 0 4px"}}>次のステップを選んでください</h3>
+              <p style={{fontSize:12,color:C.dim,margin:0}}>この診断結果は自動保存されています（ID: {proposalId?.slice(-8)||"—"}）</p>
+            </div>
+
+            {/* 3 CTA Options */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12,maxWidth:680,margin:"0 auto 20px"}}>
+
+              {/* 1. Calendly */}
+              <button onClick={()=>{
+                const name=encodeURIComponent(p?.name||"");
+                const company=encodeURIComponent(p?.company||"");
+                const notes=encodeURIComponent(`【AI診断結果】\n会社名: ${p?.company}\n王国タイプ: ${p?.kingdom_type}\n月間改善見込: ¥${fmtN(totalGain)}\n診断ID: ${proposalId||"-"}`);
+                window.open(`${CALENDLY_URL}?name=${name}&a1=${company}&notes=${notes}`,"_blank");
+              }} style={{padding:20,borderRadius:14,background:`linear-gradient(135deg,${C.accentDark}44,${C.surface})`,border:`1px solid ${C.accent}44`,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
+                <div style={{fontSize:28,marginBottom:8}}>📅</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.white,marginBottom:4}}>Zoomで無料相談</div>
+                <div style={{fontSize:11,color:C.dim}}>Calendlyで日時を選ぶだけ</div>
+                <div style={{fontSize:11,color:C.accent,marginTop:6}}>おすすめ ✨</div>
+              </button>
+
+              {/* 2. Email */}
+              <button onClick={()=>{
+                const subject=encodeURIComponent(`【AI診断】${p?.company||""}様 無料相談のご依頼`);
+                const body=encodeURIComponent(
+`${p?.name||"ご担当者"}様よりAI診断経由でお問い合わせ
+
+━━ 診断サマリー ━━
+会社名: ${p?.company||"-"}
+業種: ${p?.industry||"-"}
+王国タイプ: ${p?.kingdom_type||"-"}
+課題: ${p?.challenge||"-"}
+月間売上向上見込: ¥${fmtN(revGain)}
+月間コスト削減見込: ¥${fmtN(costSave)}
+月間改善効果合計: ¥${fmtN(totalGain)}
+推奨月額: ¥${fmtN(fee)}
+診断ID: ${proposalId||"-"}
+━━━━━━━━━━━━
+
+ご希望の日時やご質問があればご記入ください：
+
+`);
+                window.open(`mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`,"_self");
+              }} style={{padding:20,borderRadius:14,background:`linear-gradient(135deg,${C.warm}15,${C.surface})`,border:`1px solid ${C.warm}33`,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
+                <div style={{fontSize:28,marginBottom:8}}>📧</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.white,marginBottom:4}}>メールで問い合わせ</div>
+                <div style={{fontSize:11,color:C.dim}}>診断結果が自動添付されます</div>
+              </button>
+
+              {/* 3. PDF */}
+              <button onClick={()=>window.print()} style={{padding:20,borderRadius:14,background:`linear-gradient(135deg,${C.green}15,${C.surface})`,border:`1px solid ${C.green}33`,cursor:"pointer",textAlign:"center",fontFamily:"inherit"}}>
+                <div style={{fontSize:28,marginBottom:8}}>📄</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.white,marginBottom:4}}>PDF保存して検討</div>
+                <div style={{fontSize:11,color:C.dim}}>社内共有にも使えます</div>
+              </button>
+            </div>
+
+            <div style={{fontSize:10,color:C.muted,textAlign:"center"}}>※ 診断結果は自動保存されています。お問い合わせの際に診断IDをお伝えいただければスムーズです。</div>
+          </div>
+
+          {/* Actions */}
+          <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",marginBottom:28}}>
+            <button onClick={()=>setView("chat")} style={{padding:"10px 24px",borderRadius:10,background:"transparent",color:C.dim,fontWeight:600,fontSize:13,border:`1px solid ${C.border}`,cursor:"pointer",fontFamily:"inherit"}}>💬 チャットに戻る</button>
+            <button onClick={()=>{setProposal(null);setProposalBody("");setStoryText("");setMsgs([]);setGenStep("");setBookingSent(false);setChoices([]);setView("landing");}} style={{padding:"10px 24px",borderRadius:10,background:"transparent",color:C.muted,fontWeight:600,fontSize:13,border:`1px solid ${C.border}`,cursor:"pointer",fontFamily:"inherit"}}>最初から</button>
+            <button onClick={()=>setView("admin")} style={{padding:"10px 24px",borderRadius:10,background:"transparent",color:C.muted,fontWeight:600,fontSize:11,border:`1px solid ${C.border}33`,cursor:"pointer",fontFamily:"inherit"}}>🔑 管理</button>
+          </div>
+          <div style={{textAlign:"center",padding:"14px 0",borderTop:`1px solid ${C.border}`,color:C.muted,fontSize:10}}>AIの町医者 ─ 高橋秀夫 ｜ PAPA 私的AI推進協会</div>
+        </div>
+        <style>{`@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff!important;}#proposal-print{background:#fff!important;}}`}</style>
+      </div>
+    );
+  }
+
+  /* ═══ CHAT ═══ */
+  if(view==="chat"){
+    return (
+      <div style={{height:"100dvh",display:"flex",flexDirection:"column",background:C.bg,fontFamily:"'Noto Sans JP',sans-serif"}}>
+        <div style={{padding:"10px 16px",borderBottom:`1px solid ${C.border}`,background:C.surface,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+          <AvatarBadge size={32}/>
+          <button onClick={()=>setView("landing")} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>✕</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"14px 14px 6px",display:"flex",flexDirection:"column",gap:10}}>
+          {msgs.map((m,i)=>(
+            m.role==="user"?(
+              <div key={i} style={{maxWidth:"82%",padding:"10px 14px",borderRadius:"14px 4px 14px 14px",background:`${C.accent}`,color:"#ffffff",fontSize:13,lineHeight:1.75,alignSelf:"flex-end",wordBreak:"break-word"}}>
+                {m.content.split("\n").map((l,j,a)=><span key={j}>{l}{j<a.length-1&&<br/>}</span>)}
+              </div>
+            ):(
+              <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",maxWidth:"88%",alignSelf:"flex-start"}}>
+                <img src={AVATAR} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,marginTop:2,border:`1.5px solid ${C.accent}33`}}/>
+                <div style={{padding:"10px 14px",borderRadius:"4px 14px 14px 14px",background:C.card,border:`1px solid ${C.border}`,color:C.text,fontSize:13,lineHeight:1.75,wordBreak:"break-word"}}>
+                  {m.content.split("\n").map((l,j,a)=><span key={j}>{l}{j<a.length-1&&<br/>}</span>)}
+                </div>
+              </div>
+            )
+          ))}
+          {busy&&<div style={{display:"flex",gap:8,alignItems:"flex-start",alignSelf:"flex-start"}}><img src={AVATAR} alt="" style={{width:28,height:28,borderRadius:"50%",objectFit:"cover",flexShrink:0,marginTop:2,border:`1.5px solid ${C.accent}33`}}/><Dots/></div>}
+          {error&&!busy&&(
+            <div style={{padding:"8px 12px",borderRadius:10,background:`${C.red}15`,border:`1px solid ${C.red}33`,color:C.red,fontSize:12,alignSelf:"flex-start"}}>
+              {error} <button onClick={()=>{setError("");}} style={{marginLeft:6,background:"none",border:"none",color:C.accent,cursor:"pointer",fontSize:12,textDecoration:"underline"}}>閉じる</button>
+            </div>
+          )}
+          <div ref={endRef}/>
+        </div>
+        {/* Quick Reply Buttons */}
+        {choices.length>0&&!busy&&(
+          <div style={{padding:"8px 12px 4px",borderTop:`1px solid ${C.border}`,background:C.surface,display:"flex",gap:6,flexWrap:"wrap",flexShrink:0}}>
+            {choices.map((c,i)=>(
+              <button key={i} onClick={()=>sendChoice(c)}
+                style={{
+                  padding:"8px 14px",borderRadius:20,
+                  background:"transparent",
+                  color:C.accent,fontSize:12,fontWeight:600,
+                  border:`1px solid ${C.accentDark}66`,
+                  cursor:"pointer",fontFamily:"inherit",
+                  transition:"all 0.2s",
+                  whiteSpace:"nowrap",
+                  maxWidth:"100%",
+                  overflow:"hidden",
+                  textOverflow:"ellipsis",
+                }}
+                onMouseEnter={e=>{e.target.style.background=C.accentGlow;e.target.style.borderColor=C.accent;}}
+                onMouseLeave={e=>{e.target.style.background="transparent";e.target.style.borderColor=`${C.accentDark}66`;}}
+              >{c}</button>
+            ))}
+          </div>
+        )}
+        {/* Text Input */}
+        <div style={{padding:"8px 12px 10px",borderTop:choices.length>0&&!busy?"none":`1px solid ${C.border}`,background:C.surface,display:"flex",gap:8,flexShrink:0}}>
+          <input ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
+            onCompositionStart={()=>setComposing(true)} onCompositionEnd={()=>setComposing(false)}
+            placeholder={choices.length>0?"上の選択肢をタップ、または自由に入力...":"メッセージを入力..."} disabled={busy}
+            style={{flex:1,padding:"10px 12px",borderRadius:10,border:`1px solid ${C.border}`,background:C.bg,color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",opacity:busy?0.5:1}}/>
+          <button onClick={()=>send()} disabled={busy||!input.trim()}
+            style={{padding:"0 18px",borderRadius:10,background:busy||!input.trim()?C.muted:C.accent,color:"#ffffff",fontWeight:700,fontSize:13,border:"none",cursor:busy?"default":"pointer",fontFamily:"inherit"}}>送信</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ═══ ADMIN VIEW ═══ */
+  if(view==="admin"){
+    if(!adminLoading && adminData.length===0) loadAdmin();
+    const statusColors={new:C.warm,contacted:C.accent,converted:C.green};
+    const statusLabels={new:"新規",contacted:"連絡済",converted:"成約"};
+
+    return (
+      <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Noto Sans JP',sans-serif"}}>
+        <div style={{maxWidth:960,margin:"0 auto",padding:"24px 20px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <AvatarBadge size={34}/>
+              <h1 style={{fontSize:18,fontWeight:800,color:C.white,margin:0}}>管理ダッシュボード</h1>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={loadAdmin} style={{padding:"8px 16px",borderRadius:8,background:C.card,color:C.accent,fontSize:12,fontWeight:600,border:`1px solid ${C.border}`,cursor:"pointer",fontFamily:"inherit"}}>🔄 更新</button>
+              <button onClick={()=>setView("landing")} style={{padding:"8px 16px",borderRadius:8,background:C.card,color:C.dim,fontSize:12,fontWeight:600,border:`1px solid ${C.border}`,cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:24}}>
+            {[
+              {label:"総診断数",value:adminData.length,color:C.accent},
+              {label:"新規",value:adminData.filter(d=>d.status==="new").length,color:C.warm},
+              {label:"連絡済",value:adminData.filter(d=>d.status==="contacted").length,color:C.accent},
+              {label:"成約",value:adminData.filter(d=>d.status==="converted").length,color:C.green},
+            ].map((s,i)=>(
+              <div key={i} style={{padding:16,borderRadius:12,background:C.card,border:`1px solid ${C.border}`,textAlign:"center"}}>
+                <div style={{fontSize:28,fontWeight:800,color:s.color}}>{s.value}</div>
+                <div style={{fontSize:11,color:C.muted}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {adminLoading&&<div style={{textAlign:"center",padding:40,color:C.dim}}>読み込み中...</div>}
+
+          {/* List */}
+          {adminData.map((d,i)=>{
+            const k=KINGDOM[d.kingdom_type]||{emoji:"🏰",color:C.accent};
+            return (
+              <div key={i} style={{padding:16,borderRadius:14,background:C.card,border:`1px solid ${C.border}`,marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:200}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      <span style={{fontSize:18}}>{k.emoji}</span>
+                      <span style={{fontSize:15,fontWeight:700,color:C.white}}>{d.company}</span>
+                      <span style={{padding:"2px 8px",borderRadius:4,background:`${statusColors[d.status]||C.muted}22`,color:statusColors[d.status]||C.muted,fontSize:10,fontWeight:600}}>
+                        {statusLabels[d.status]||d.status}
+                      </span>
+                    </div>
+                    <div style={{fontSize:12,color:C.dim,marginBottom:4}}>
+                      {d.name}様 ｜ {d.industry} ｜ {k.label}
+                    </div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:6}}>
+                      {d.challenge?.substring(0,80)}{d.challenge?.length>80?"...":""}
+                    </div>
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11}}>
+                      <span style={{color:C.green}}>売上+{fmt(d.revenue_gain)}/月</span>
+                      <span style={{color:C.accent}}>削減{fmt(d.cost_saving)}/月</span>
+                      <span style={{color:C.warm}}>合計{fmt(d.total_gain)}/月</span>
+                      <span style={{color:C.white}}>推奨{fmt(d.monthly_fee)}/月</span>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontSize:10,color:C.muted,marginBottom:6}}>
+                      {new Date(d.created_at).toLocaleDateString("ja-JP")} {new Date(d.created_at).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}
+                    </div>
+                    <div style={{fontSize:9,color:C.muted,marginBottom:8}}>ID: {d.id?.slice(-8)}</div>
+                    <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                      {["new","contacted","converted"].map(st=>(
+                        <button key={st} onClick={async()=>{
+                          d.status=st;
+                          try{await window.storage.set("proposal:"+d.id,JSON.stringify(d),true);}catch{}
+                          setAdminData([...adminData]);
+                        }} style={{
+                          padding:"4px 8px",borderRadius:4,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:"inherit",
+                          background:d.status===st?`${statusColors[st]}33`:"transparent",
+                          color:d.status===st?statusColors[st]:C.muted,
+                          border:`1px solid ${d.status===st?statusColors[st]:C.border}44`,
+                        }}>{statusLabels[st]}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {!adminLoading&&adminData.length===0&&(
+            <div style={{textAlign:"center",padding:60,color:C.muted}}>
+              <div style={{fontSize:40,marginBottom:12}}>📋</div>
+              <div>まだ診断データがありません</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+
+  /* ═══ API KEY VIEW ═══ — Proxy版: 不使用 */
+
+  /* ═══ LANDING ═══ */
+  return (
+    <div style={{minHeight:"100vh",background:`${C.bg}`,color:C.text,fontFamily:"'Noto Sans JP',sans-serif",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",inset:0,backgroundImage:`linear-gradient(${C.border}44 1px,transparent 1px),linear-gradient(90deg,${C.border}44 1px,transparent 1px)`,backgroundSize:"60px 60px",opacity:0.3,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",top:-200,right:-200,width:600,height:600,borderRadius:"50%",background:`radial-gradient(circle,${C.accent}06 0%,transparent 70%)`,pointerEvents:"none"}}/>
+
+      <div style={{maxWidth:960,margin:"0 auto",padding:"0 20px",position:"relative",zIndex:1}}>
+        <nav style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 0",borderBottom:`1px solid ${C.border}`}}>
+          <AvatarBadge/>
+          <button onClick={openChat} style={{padding:"7px 18px",borderRadius:8,background:C.accentGlow,color:C.accent,fontSize:12,fontWeight:600,border:`1px solid ${C.accentDark}55`,cursor:"pointer",fontFamily:"inherit"}}>無料で相談する</button>
+        </nav>
+
+        <section style={{padding:"clamp(50px,10vw,80px) 0 40px",textAlign:"center"}}>
+          <div style={{display:"inline-block",padding:"5px 16px",borderRadius:20,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:20,border:`1px solid ${C.accentDark}44`}}>AI BUSINESS DIAGNOSTIC</div>
+          <h1 style={{fontSize:"clamp(26px,5vw,44px)",fontWeight:800,lineHeight:1.3,color:C.white,marginBottom:18,letterSpacing:"-0.03em"}}>
+            売上は、あといくら<br/>
+            <span style={{background:`linear-gradient(135deg,${C.green},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>伸ばせるか？</span><br/>
+            AIが3分で試算します
+          </h1>
+          <p style={{fontSize:"clamp(14px,2vw,17px)",color:C.dim,maxWidth:540,margin:"0 auto 32px",lineHeight:1.75}}>
+            チャットで経営のお悩みを話すだけ。AIが売上向上効果とコスト削減額を試算し、「二つの未来」を描いた診断レポートをその場でお渡しします。
+          </p>
+          <button onClick={openChat} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"15px 36px",borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontWeight:700,fontSize:15,border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:`0 0 40px ${C.accentGlow},0 4px 20px rgba(0,0,0,0.3)`}}>
+            無料で診断する →
+          </button>
+        </section>
+
+        <div style={{display:"flex",justifyContent:"center",gap:"clamp(20px,5vw,48px)",padding:"32px 0",flexWrap:"wrap"}}>
+          {[["3分","診断時間"],["¥0","相談料"],["📈","売上試算"],["📄","レポート即発行"]].map(([v,l],i)=>(
+            <div key={i} style={{textAlign:"center"}}>
+              <div style={{fontSize:"clamp(24px,3.5vw,32px)",fontWeight:800,color:C.accent}}>{v}</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{l}</div>
+            </div>
+          ))}
+        </div>
+
+        <section style={{padding:"32px 0 16px"}}>
+          <h2 style={{fontSize:12,fontWeight:600,color:C.accent,textAlign:"center",letterSpacing:"0.1em",marginBottom:22}}>HOW IT WORKS</h2>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14}}>
+            {[
+              {icon:"💬",title:"チャットでヒアリング",desc:"業種・売上・課題をAIが対話で把握。質問票は不要。",bg:C.accentGlow},
+              {icon:"📖",title:"二つの未来を提示",desc:"このままの未来と、AI導入後の未来。物語で違いを実感。",bg:C.warmGlow},
+              {icon:"📊",title:"売上向上+コスト削減を試算",desc:"売上の伸びしろとコスト削減の2軸でROIを自動計算。",bg:C.greenGlow},
+              {icon:"📄",title:"診断レポート即発行",desc:"王国タイプ診断付きの提案書をその場でPDF出力。",bg:C.purpleGlow},
+            ].map((f,i)=>(
+              <div key={i} style={{padding:20,borderRadius:14,background:C.card,border:`1px solid ${C.border}`}}>
+                <div style={{width:40,height:40,borderRadius:10,background:f.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginBottom:12}}>{f.icon}</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.white,marginBottom:4}}>{f.title}</div>
+                <div style={{fontSize:12,color:C.dim,lineHeight:1.65}}>{f.desc}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section style={{padding:"32px 0 16px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
+            {[
+              {q:"「このままだとヤバい」が数字で見えた。放置シナリオを読んで目が覚めました。",w:"飲食業 経営者",e:"🍺"},
+              {q:"売上をどう伸ばすかの提案が具体的。コスト削減だけじゃなく攻めのプランがあるのがいい。",w:"不動産業 代表",e:"🏠"},
+            ].map((t,i)=>(
+              <div key={i} style={{padding:20,borderRadius:14,background:C.card,border:`1px solid ${C.border}`}}>
+                <div style={{fontSize:18,marginBottom:8}}>{t.e}</div>
+                <div style={{fontSize:12,color:C.dim,lineHeight:1.7,marginBottom:10,fontStyle:"italic"}}>「{t.q}」</div>
+                <div style={{fontSize:11,color:C.muted}}>── {t.w}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section style={{padding:"40px 0 50px",textAlign:"center"}}>
+          <h2 style={{fontSize:"clamp(18px,3.5vw,26px)",fontWeight:800,color:C.white,marginBottom:10}}>まずは3分、お話ししませんか？</h2>
+          <p style={{fontSize:13,color:C.dim,marginBottom:24}}>相談は無料。AIが御社の「伸びしろ」を診断します。</p>
+          <button onClick={openChat} style={{padding:"14px 36px",borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontWeight:700,fontSize:15,border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:`0 0 40px ${C.accentGlow}`}}>無料AI診断をはじめる</button>
+        </section>
+
+        <footer style={{borderTop:`1px solid ${C.border}`,padding:"16px 0",textAlign:"center",color:C.muted,fontSize:10}}>
+          AIの町医者 ─ 高橋秀夫 ｜ PAPA 私的AI推進協会 ｜ privatellm.jp
+          <span onClick={()=>{loadAdmin();setView("admin");}} style={{cursor:"pointer",marginLeft:8,opacity:0.3}}>🔑</span>
+        </footer>
+      </div>
+
+      <button onClick={openChat} style={{position:"fixed",bottom:18,right:18,width:56,height:56,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontSize:22,border:"none",cursor:"pointer",boxShadow:`0 4px 20px ${C.accentGlow},0 0 50px ${C.accentGlow}`,display:"flex",alignItems:"center",justifyContent:"center",zIndex:50}} title="AIに相談する">💬</button>
+    </div>
+  );
+}
+
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<AISDR/>);
+</script>
+</body>
+</html>
