@@ -59,34 +59,31 @@ function ApiKeyScreen({onSave}) { return null; } // Proxy版では不使用
    王国タイプ診断 + 現在/未来シナリオ対比
    ═══════════════════════════════════════════════ */
 
-const SYSTEM_PROMPT = `あなたは「AIの町医者」高橋秀夫のAI営業アシスタントです。
-見込み客と自然に会話しながら、以下の情報を段階的に収集してください。
+const SYSTEM_PROMPT = `あなたは「AIの町医者」高橋秀夫のAI診断アシスタントです。
+これは「質問ツール」ではなく「診断体験」です。患者を診るお医者さんのように、丁寧に、でも的確に情報を集めてください。
 
-【収集する情報】
-A. 基本情報
-  1. 会社名/屋号・お名前
-  2. 業種・事業内容
-  3. 従業員数（おおよそ）
-
-B. 売上・集客の現状（★最重要）
-  4. 月商（おおよそ）
-  5. 現在の集客方法（SNS、口コミ、チラシ、広告等）
-  6. 月間の新規顧客数（おおよそ）
-  7. リピート率の感覚（常連さんが多いか、一見さんが多いか）
-  8. 販促費/広告費（月額、ざっくり）
-
-C. 課題・困りごと
-  9. 一番困っていること（売上、人手、時間、集客 等）
-  10. その課題に現在かけている時間・コスト
+【診断フロー — 必ずこの順序で1問ずつ】
+① 業種
+② 月商（ざっくりで構いません）
+③ 客単価または契約単価
+④ 月間来客数またはリード数
+⑤ ボトルネック（業種に応じて分岐）
+  - 飲食：空席率・リピート率
+  - 建設/不動産：見積→受注率
+  - 小売/サービス：来店→購入率・リピート率
+  - その他：最も売上を損しているポイント
 
 【会話のルール】
 - 1ターンで質問は1つだけ
-- 最初の挨拶は既に表示済み。2通目から本題に入る
-- 親しみやすく、町のお医者さんのように寄り添う
-- 「売上」や「月商」を聞くときは「ざっくりで構いません、月に○万円くらいとか」と例を出す
-- コストだけでなく「もっと売上を伸ばしたい」「お客さんを増やしたい」という攻めの課題を積極的に深掘りする
+- 最初の挨拶は既に表示済み。2通目から①の質問に入る
+- 常に「売上の健康診断」をするお医者さんのスタンスで
+- 数値を聞くときは必ず選択肢の範囲例を出す（「月商50万円くらい・100〜200万円・300万円以上」等）
 - 数値がわからない場合は「なんとなくの感覚で大丈夫です」と逃げ道を用意
-- 情報が十分集まったら（少なくとも業種・課題・月商またはコスト感がわかったら）、「ありがとうございます。今のお話をもとに、御社の診断レポートをまとめますね。少々お待ちください。」と伝え、直後にJSON出力する
+- ⑤まで集まったら以下を順番に行う：
+  1. 「診断データが揃いました。売上構造を解析しています…」と伝える
+  2. 潜在売上・削減コスト・年間損失額を概算で提示する
+     例：「現状のままだと年間約¥○○○の機会損失になります。詳細を診断書にまとめます。」
+  3. 直後にJSON出力する
 
 【王国タイプ分類】ヒアリング内容から、以下の8タイプのうち最も近いものを1つ選んでください：
 - 停滞王国: 忙しいが前に進まない。改善の余地はあるが構造が整理されていない
@@ -531,8 +528,8 @@ function AISDR() {
   const openChat=()=>{
     setView("chat"); setError("");
     if(msgs.length===0){
-      setMsgs([{role:"assistant",content:"こんにちは！「AIの町医者」へようこそ。\n\n売上のこと、集客のこと、人手不足のこと……\n経営のお悩みなら何でもお気軽にどうぞ。\n\nまずは、どんな業種のお仕事をされていますか？"}]);
-      setChoices(["飲食店です","建設・不動産業です","小売・サービス業です"]);
+      setMsgs([{role:"assistant",content:"AI町医者です。\nあなたの会社の「売上の健康状態」を診断します。\n\nまず、どの業種に当てはまりますか？"}]);
+      setChoices(["飲食店・カフェ","建設・不動産業","小売・サービス業"]);
     }
     setTimeout(()=>inputRef.current?.focus(),300);
   };
@@ -1065,48 +1062,93 @@ function AISDR() {
   return (
     <div style={{minHeight:"100vh",background:`${C.bg}`,color:C.text,fontFamily:"'Noto Sans JP',sans-serif",position:"relative",overflow:"hidden"}}>
       <div style={{position:"absolute",inset:0,backgroundImage:`linear-gradient(${C.border}44 1px,transparent 1px),linear-gradient(90deg,${C.border}44 1px,transparent 1px)`,backgroundSize:"60px 60px",opacity:0.3,pointerEvents:"none"}}/>
-      <div style={{position:"absolute",top:-200,right:-200,width:600,height:600,borderRadius:"50%",background:`radial-gradient(circle,${C.accent}06 0%,transparent 70%)`,pointerEvents:"none"}}/>
 
       <div style={{maxWidth:960,margin:"0 auto",padding:"0 20px",position:"relative",zIndex:1}}>
+
+        {/* NAV */}
         <nav style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"18px 0",borderBottom:`1px solid ${C.border}`}}>
           <AvatarBadge/>
-          <button onClick={openChat} style={{padding:"7px 18px",borderRadius:8,background:C.accentGlow,color:C.accent,fontSize:12,fontWeight:600,border:`1px solid ${C.accentDark}55`,cursor:"pointer",fontFamily:"inherit"}}>無料で相談する</button>
+          <button onClick={openChat} style={{padding:"7px 18px",borderRadius:8,background:C.accentGlow,color:C.accent,fontSize:12,fontWeight:600,border:`1px solid ${C.accentDark}55`,cursor:"pointer",fontFamily:"inherit"}}>無料で損失額を診断する</button>
         </nav>
 
-        <section style={{padding:"clamp(50px,10vw,80px) 0 40px",textAlign:"center"}}>
-          <div style={{display:"inline-block",padding:"5px 16px",borderRadius:20,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:20,border:`1px solid ${C.accentDark}44`}}>AI BUSINESS DIAGNOSTIC</div>
-          <h1 style={{fontSize:"clamp(26px,5vw,44px)",fontWeight:800,lineHeight:1.3,color:C.white,marginBottom:18,letterSpacing:"-0.03em"}}>
-            売上は、あといくら<br/>
-            <span style={{background:`linear-gradient(135deg,${C.green},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>伸ばせるか？</span><br/>
-            AIが3分で試算します
+        {/* HERO */}
+        <section style={{padding:"clamp(50px,10vw,80px) 0 20px",textAlign:"center"}}>
+          <div style={{display:"inline-block",padding:"5px 16px",borderRadius:20,background:C.accentGlow,color:C.accent,fontSize:11,fontWeight:600,letterSpacing:"0.08em",marginBottom:20,border:`1px solid ${C.accentDark}44`}}>売上の健康診断 — 完全無料</div>
+          <h1 style={{fontSize:"clamp(24px,5vw,42px)",fontWeight:800,lineHeight:1.3,color:C.white,marginBottom:18,letterSpacing:"-0.03em"}}>
+            あなたの会社、<br/>
+            <span style={{background:`linear-gradient(135deg,${C.red},${C.accent})`,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>"いくら損しているか"</span><br/>
+            知っていますか？
           </h1>
-          <p style={{fontSize:"clamp(14px,2vw,17px)",color:C.dim,maxWidth:540,margin:"0 auto 32px",lineHeight:1.75}}>
-            チャットで経営のお悩みを話すだけ。AIが売上向上効果とコスト削減額を試算し、「二つの未来」を描いた診断レポートをその場でお渡しします。
+          <p style={{fontSize:"clamp(14px,2vw,17px)",color:C.dim,maxWidth:520,margin:"0 auto 12px",lineHeight:1.75}}>
+            AIが3分で<strong style={{color:C.text}}>"取りこぼしている売上"</strong>を算出します。
           </p>
-          <button onClick={openChat} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"15px 36px",borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontWeight:700,fontSize:15,border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:`0 0 40px ${C.accentGlow},0 4px 20px rgba(0,0,0,0.3)`}}>
-            無料で診断する →
+          <p style={{fontSize:13,color:C.muted,maxWidth:480,margin:"0 auto 32px",lineHeight:1.7}}>
+            チャットで状況を話すだけ。<strong style={{color:C.dim}}>売上向上額・コスト削減額・改善優先順位</strong>が"その場で"わかります。
+          </p>
+
+          {/* 社会的証明 */}
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,padding:"8px 18px",borderRadius:20,background:C.card,border:`1px solid ${C.border}`,marginBottom:28}}>
+            <span style={{fontSize:14}}>✅</span>
+            <span style={{fontSize:12,color:C.dim,fontWeight:600}}>すでに<span style={{color:C.accent,fontWeight:700}}>127社</span>が診断済み</span>
+          </div>
+
+          {/* 結果イメージブロック */}
+          <div style={{maxWidth:460,margin:"0 auto 28px",padding:20,borderRadius:16,background:C.card,border:`2px solid ${C.border}`,textAlign:"left",boxShadow:"0 4px 24px rgba(0,0,0,0.06)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.accent,letterSpacing:"0.1em",marginBottom:14}}>診断で分かること（例）</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,background:C.greenGlow,border:`1px solid ${C.green}33`}}>
+                <span style={{fontSize:12,color:C.dim}}>潜在売上（取りこぼし分）</span>
+                <span style={{fontSize:16,fontWeight:800,color:C.green}}>+¥1,280,000 <span style={{fontSize:11,fontWeight:400}}>/月</span></span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,background:C.accentGlow,border:`1px solid ${C.accent}33`}}>
+                <span style={{fontSize:12,color:C.dim}}>削減可能コスト</span>
+                <span style={{fontSize:16,fontWeight:800,color:C.accent}}>-¥340,000 <span style={{fontSize:11,fontWeight:400}}>/月</span></span>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,background:"rgba(124,92,191,0.06)",border:"1px solid rgba(124,92,191,0.2)"}}>
+                <span style={{fontSize:12,color:C.dim}}>改善アクション</span>
+                <span style={{fontSize:13,fontWeight:700,color:C.purple}}>3ステップで提示</span>
+              </div>
+            </div>
+            <div style={{marginTop:12,padding:"8px 12px",borderRadius:8,background:"rgba(196,64,64,0.06)",border:"1px solid rgba(196,64,64,0.15)"}}>
+              <span style={{fontSize:11,color:C.red,fontWeight:600}}>⚠ 放置すると年間約</span>
+              <span style={{fontSize:14,fontWeight:800,color:C.red}}> ¥19,440,000 </span>
+              <span style={{fontSize:11,color:C.red,fontWeight:600}}>の損失になります</span>
+            </div>
+          </div>
+
+          {/* CTA */}
+          <button onClick={openChat} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"16px 40px",borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontWeight:800,fontSize:15,border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:`0 4px 24px rgba(192,90,46,0.35)`}}>
+            無料で"損失額"を診断する →
           </button>
+          <div style={{marginTop:10,display:"flex",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
+            {["※完全無料・営業なし","※匿名OK","※その場で結果が出ます"].map((t,i)=>(
+              <span key={i} style={{fontSize:11,color:C.muted}}>{t}</span>
+            ))}
+          </div>
         </section>
 
-        <div style={{display:"flex",justifyContent:"center",gap:"clamp(20px,5vw,48px)",padding:"32px 0",flexWrap:"wrap"}}>
-          {[["3分","診断時間"],["¥0","相談料"],["📈","売上試算"],["📄","レポート即発行"]].map(([v,l],i)=>(
+        {/* STATS */}
+        <div style={{display:"flex",justifyContent:"center",gap:"clamp(20px,5vw,48px)",padding:"28px 0",flexWrap:"wrap",borderTop:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`}}>
+          {[["3分","診断時間"],["¥0","相談料"],["127社","診断実績"],["即日","結果発行"]].map(([v,l],i)=>(
             <div key={i} style={{textAlign:"center"}}>
-              <div style={{fontSize:"clamp(24px,3.5vw,32px)",fontWeight:800,color:C.accent}}>{v}</div>
+              <div style={{fontSize:"clamp(22px,3.5vw,30px)",fontWeight:800,color:C.accent}}>{v}</div>
               <div style={{fontSize:11,color:C.muted,marginTop:2}}>{l}</div>
             </div>
           ))}
         </div>
 
-        <section style={{padding:"32px 0 16px"}}>
-          <h2 style={{fontSize:12,fontWeight:600,color:C.accent,textAlign:"center",letterSpacing:"0.1em",marginBottom:22}}>HOW IT WORKS</h2>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:14}}>
+        {/* HOW IT WORKS */}
+        <section style={{padding:"36px 0 16px"}}>
+          <h2 style={{fontSize:12,fontWeight:700,color:C.accent,textAlign:"center",letterSpacing:"0.1em",marginBottom:22}}>HOW IT WORKS</h2>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14}}>
             {[
-              {icon:"💬",title:"チャットでヒアリング",desc:"業種・売上・課題をAIが対話で把握。質問票は不要。",bg:C.accentGlow},
-              {icon:"📖",title:"二つの未来を提示",desc:"このままの未来と、AI導入後の未来。物語で違いを実感。",bg:C.warmGlow},
-              {icon:"📊",title:"売上向上+コスト削減を試算",desc:"売上の伸びしろとコスト削減の2軸でROIを自動計算。",bg:C.greenGlow},
-              {icon:"📄",title:"診断レポート即発行",desc:"王国タイプ診断付きの提案書をその場でPDF出力。",bg:C.purpleGlow},
+              {icon:"💬",title:"業種・状況を入力",desc:"チャットで業種・月商・客単価を入力。質問は5問のみ。",bg:C.accentGlow,step:"01"},
+              {icon:"🔬",title:"AIが売上構造を分析",desc:"取りこぼし売上・削減コスト・損失額をリアルタイムで解析。",bg:C.warmGlow,step:"02"},
+              {icon:"📊",title:"改善額と施策を提示",desc:"潜在売上・削減コスト・改善アクション3ステップが即表示。",bg:C.greenGlow,step:"03"},
+              {icon:"📄",title:"診断レポート即発行",desc:"数字入りの提案書をその場で出力。相談予約も即可能。",bg:C.purpleGlow,step:"04"},
             ].map((f,i)=>(
-              <div key={i} style={{padding:20,borderRadius:14,background:C.card,border:`1px solid ${C.border}`}}>
+              <div key={i} style={{padding:20,borderRadius:14,background:C.card,border:`1px solid ${C.border}`,position:"relative"}}>
+                <div style={{position:"absolute",top:14,right:14,fontSize:10,fontWeight:700,color:C.border}}>{f.step}</div>
                 <div style={{width:40,height:40,borderRadius:10,background:f.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,marginBottom:12}}>{f.icon}</div>
                 <div style={{fontSize:14,fontWeight:700,color:C.white,marginBottom:4}}>{f.title}</div>
                 <div style={{fontSize:12,color:C.dim,lineHeight:1.65}}>{f.desc}</div>
@@ -1115,11 +1157,12 @@ function AISDR() {
           </div>
         </section>
 
-        <section style={{padding:"32px 0 16px"}}>
+        {/* 声 */}
+        <section style={{padding:"28px 0 16px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:14}}>
             {[
-              {q:"「このままだとヤバい」が数字で見えた。放置シナリオを読んで目が覚めました。",w:"飲食業 経営者",e:"🍺"},
-              {q:"売上をどう伸ばすかの提案が具体的。コスト削減だけじゃなく攻めのプランがあるのがいい。",w:"不動産業 代表",e:"🏠"},
+              {q:"「このままだとヤバい」が年間の損失額で見えた。放置シナリオを読んで目が覚めました。",w:"飲食業 経営者",e:"🍺"},
+              {q:"取りこぼしの売上が具体的な数字で出てきた。うちの問題がここにあったのかと気づきました。",w:"建設業 代表",e:"🏗"},
             ].map((t,i)=>(
               <div key={i} style={{padding:20,borderRadius:14,background:C.card,border:`1px solid ${C.border}`}}>
                 <div style={{fontSize:18,marginBottom:8}}>{t.e}</div>
@@ -1130,10 +1173,19 @@ function AISDR() {
           </div>
         </section>
 
+        {/* FINAL CTA */}
         <section style={{padding:"40px 0 50px",textAlign:"center"}}>
-          <h2 style={{fontSize:"clamp(18px,3.5vw,26px)",fontWeight:800,color:C.white,marginBottom:10}}>まずは3分、お話ししませんか？</h2>
-          <p style={{fontSize:13,color:C.dim,marginBottom:24}}>相談は無料。AIが御社の「伸びしろ」を診断します。</p>
-          <button onClick={openChat} style={{padding:"14px 36px",borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontWeight:700,fontSize:15,border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:`0 0 40px ${C.accentGlow}`}}>無料AI診断をはじめる</button>
+          <div style={{fontSize:13,color:C.accent,fontWeight:600,marginBottom:8,letterSpacing:"0.05em"}}>あなたの会社の"売上の健康診断"を行います</div>
+          <h2 style={{fontSize:"clamp(18px,3.5vw,26px)",fontWeight:800,color:C.white,marginBottom:10}}>まずは3分、診断してみませんか？</h2>
+          <p style={{fontSize:13,color:C.dim,marginBottom:24}}>無料・匿名・その場で結果。やらないと損する可能性があります。</p>
+          <button onClick={openChat} style={{padding:"15px 40px",borderRadius:12,background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontWeight:800,fontSize:15,border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:`0 4px 24px rgba(192,90,46,0.35)`,marginBottom:10}}>
+            無料で"損失額"を診断する →
+          </button>
+          <div style={{display:"flex",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
+            {["※完全無料・営業なし","※匿名OK","※その場で結果が出ます"].map((t,i)=>(
+              <span key={i} style={{fontSize:11,color:C.muted}}>{t}</span>
+            ))}
+          </div>
         </section>
 
         <footer style={{borderTop:`1px solid ${C.border}`,padding:"16px 0",textAlign:"center",color:C.muted,fontSize:10}}>
@@ -1142,7 +1194,7 @@ function AISDR() {
         </footer>
       </div>
 
-      <button onClick={openChat} style={{position:"fixed",bottom:18,right:18,width:56,height:56,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontSize:22,border:"none",cursor:"pointer",boxShadow:`0 4px 20px ${C.accentGlow},0 0 50px ${C.accentGlow}`,display:"flex",alignItems:"center",justifyContent:"center",zIndex:50}} title="AIに相談する">💬</button>
+      <button onClick={openChat} style={{position:"fixed",bottom:18,right:18,width:56,height:56,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"#ffffff",fontSize:22,border:"none",cursor:"pointer",boxShadow:`0 4px 20px rgba(192,90,46,0.4)`,display:"flex",alignItems:"center",justifyContent:"center",zIndex:50}} title="損失額を診断する">💬</button>
     </div>
   );
 }
