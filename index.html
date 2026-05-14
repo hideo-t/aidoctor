@@ -862,7 +862,69 @@ footer {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* PROVIDER section */
+.provider-section {
+  padding: 4rem 1rem;
+  border-top: 1px solid #e5e3dc;
+  background: #fafaf7;
+  text-align: center;
+}
+.provider-section .label {
+  font-size: 0.75rem;
+  letter-spacing: 0.3em;
+  color: #999;
+  margin-bottom: 1rem;
+}
+.provider-section .body {
+  font-size: 0.95rem;
+  line-height: 1.9;
+  max-width: 640px;
+  margin: 0 auto 1.5rem;
+  color: #222;
+}
+.provider-section .body strong { font-weight: 700; }
+.provider-section .body a { color: #b8412e; text-decoration: none; border-bottom: 1px solid #b8412e; }
+.provider-section .body a:hover { background: #b8412e; color: #fff; }
+.provider-section .cta-row {
+  display: flex; gap: 0.8rem; justify-content: center;
+  flex-wrap: wrap; margin-top: 1.5rem;
+}
+.provider-section .cta-row a {
+  padding: 0.7rem 1.3rem;
+  border: 1px solid #333;
+  color: #333;
+  text-decoration: none;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  transition: 0.15s;
+}
+.provider-section .cta-row a:hover {
+  background: #333; color: #fff;
+}
 </style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "AIの町医者",
+  "description": "中小企業向けAI実装コンサルティング・Fractional CAIO",
+  "provider": {
+    "@type": "Person",
+    "name": "高橋 秀夫",
+    "alternateName": ["AIの町医者", "白河の黒衣"],
+    "url": "https://hideo-t.github.io/profile/",
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "白河市",
+      "addressRegion": "福島県",
+      "addressCountry": "JP"
+    }
+  },
+  "areaServed": "JP",
+  "serviceType": "AIコンサルティング / Fractional CAIO / 業務自動化"
+}
+</script>
 </head>
 <body>
 
@@ -1070,6 +1132,22 @@ footer {
   <a href="https://note.com/digihidex/n/n7448d8b006c4" target="_blank" class="notes-link">
     noteを読む →
   </a>
+</section>
+
+<!-- ABOUT THE PROVIDER -->
+<section class="provider-section">
+  <div class="label">ABOUT THE PROVIDER</div>
+  <p class="body">
+    「AIの町医者」は、独立系の経営顧問・フラクショナルCAIO <strong>高橋秀夫</strong>が運営する事業です。<br>
+    AI戦略・組織設計を本業に、福島・白河で
+    <a href="https://hideo-t.github.io/mitsuakira-pro/" target="_blank" rel="noopener">三晶プロダクション後見役</a>
+    として落語の若手育成にも携わっています。
+  </p>
+  <div class="cta-row">
+    <a href="https://hideo-t.github.io/profile/" target="_blank" rel="noopener">詳しいプロフィール ↗</a>
+    <a href="https://github.com/hideo-t" target="_blank" rel="noopener">GitHub 230+ repos ↗</a>
+    <a href="https://hideo-t.github.io/worldkingjapan/" target="_blank" rel="noopener">作品集 WORLD KING ↗</a>
+  </div>
 </section>
 
 <!-- FOOTER -->
